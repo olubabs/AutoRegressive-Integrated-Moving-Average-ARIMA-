@@ -1,0 +1,92 @@
+# libraries
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from statsmodels.tsa.stattools import adfuller
+
+# data
+data = pd.read_csv('Adefisan.csv')
+
+# Convert 'month' column to datetime
+data['month'] = pd.to_datetime(data['month'])
+data.set_index('month', inplace=True)
+
+# Plot Precipitation and SST Over Time
+data[['PRE', 'SST']].plot()
+plt.xlabel('Month')
+plt.ylabel('Value')
+plt.title('Precipitation and SST Over Time')
+plt.show()
+
+# Checking for stationarity using the Dickey-Fuller test
+def adf_test(timeseries):
+    # Perform Dickey-Fuller test
+    print('Results of Dickey-Fuller Test:')
+    dftest = adfuller(timeseries, autolag='AIC')
+    dfoutput = pd.Series(dftest[0:4], index=['Test Statistic', 'p-value', '#Lags Used', 'Number of Observations Used'])
+    for key, value in dftest[4].items():
+        dfoutput['Critical Value (%s)' % key] = value
+    print(dfoutput)
+
+adf_test(data['PRE'])
+
+# If the series is not stationary, apply differencing
+data_diff = data.diff().dropna()
+
+# Visualize differenced data
+data_diff.plot()
+plt.xlabel('Month')
+plt.ylabel('Differenced Precipitation')
+plt.title('Differenced Precipitation Over Time')
+plt.show()
+
+# Check for stationarity again
+adf_test(data_diff['PRE'])
+
+# Plot ACF and PACF
+plot_acf(data_diff['PRE'], lags=20)
+plt.title('ACF of Differenced Data')
+plt.show()
+
+# PACF
+plot_pacf(data_diff['PRE'], lags=20)
+plt.title('PACF of Differenced Data')
+plt.show()
+
+# Fit the ARIMA model
+try:
+    # Choose a specific column for analysis
+    endog = data_diff['PRE']
+    exog = data_diff['SST']  # Adding SST as an exogenous variable
+
+    model = ARIMA(endog, exog=exog, order=(1, 1, 1))
+    results = model.fit()
+
+    # Summary of the model
+    print(results.summary())
+
+    # Plot diagnostics of the model
+    results.plot_diagnostics(figsize=(15, 8))
+    plt.show()
+
+    # Forecast future values
+    forecast_steps = 12  # Forecast for 12 months
+    forecast = results.forecast(steps=forecast_steps, exog=data_diff['SST'][-forecast_steps:])
+    print(forecast)
+
+    # Extend the index to include forecasted months
+    index = pd.date_range(start=data_diff.index[-1], periods=forecast_steps, freq='M')
+
+    # Plot the extended time series data
+    plt.figure(figsize=(12, 6))
+    plt.plot(index, forecast, color='red', label='Forecasted PRE')
+    plt.xlabel('Month')
+    plt.ylabel('Precipitation')
+    plt.title('Forecasted Precipitation Using SST')
+    plt.legend()
+    plt.show()
+
+except Exception as e:
+    print("Error:", str(e))
